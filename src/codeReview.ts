@@ -45,7 +45,13 @@ async function reviewCodeWithChatGPT(
 }
 
 export async function runCodeReview() {
+  console.log("Starting code review");
   const pulls = await getOpenPullRequestsAssignedToMe();
+
+  if (!pulls.length) {
+    console.log("No open pull requests assigned to you");
+    return;
+  }
 
   for (const pull of pulls) {
     console.log(`Reviewing PR #${pull.pullNumber}`);
