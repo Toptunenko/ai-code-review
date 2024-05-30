@@ -55,7 +55,7 @@ export async function getDiff(pullNumber: number): Promise<string | null> {
   return response.data;
 }
 
-export async function getPullRequestComments(
+export async function getPullRequestCommentsL(
   pullNumber: number,
 ): Promise<Comment[]> {
   const { data } = await octokit.pulls.listReviewComments({
@@ -68,6 +68,41 @@ export async function getPullRequestComments(
     path: comment.path,
     line: comment.line as number,
   }));
+}
+
+export async function getPullRequestComments(
+  pullNumber: number,
+): Promise<Comment[]> {
+  let comments: Comment[] = [];
+  let page = 1;
+  let hasNextPage = true;
+
+  while (hasNextPage) {
+    const { data } = await octokit.pulls.listReviewComments({
+      owner,
+      repo,
+      pull_number: pullNumber,
+      per_page: 100,
+      page,
+    });
+
+    comments = [
+      ...comments,
+      ...data.map((comment) => ({
+        body: comment.body,
+        path: comment.path,
+        line: comment.line as number,
+      })),
+    ];
+
+    if (data.length < 100) {
+      hasNextPage = false;
+    } else {
+      page++;
+    }
+  }
+
+  return comments;
 }
 
 export async function pushReviewComment(
@@ -85,7 +120,7 @@ export async function pushReviewComment(
 
 export function createComment(file: File, aiResponses: Review[]): Comment[] {
   const path = file.to as string;
-  let comments = aiResponses.flatMap((aiResponse) => {
+  return aiResponses.flatMap((aiResponse) => {
     if (!file.to) {
       return [];
     }
@@ -95,20 +130,6 @@ export function createComment(file: File, aiResponses: Review[]): Comment[] {
       line: Number(aiResponse.lineNumber),
     };
   });
-
-  // if (!comments.length) {
-  //   // @ts-ignore
-  //   const line = file.chunks[0].changes[0]["ln1"] as number;
-  //   comments = [
-  //     {
-  //       body: "AI review completed",
-  //       path,
-  //       line,
-  //     },
-  //   ];
-  // }
-
-  return comments;
 }
 
 export async function getFile(
@@ -124,22 +145,14 @@ export async function getFile(
   return data;
 }
 
-// download file from github to local file system and return the path
-export async function downloadFile(
+export async function fileData(
   path: string,
   branch: string = "staging",
-): Promise<string> {
+): Promise<Record<string, any>> {
   const data = await getFile(path, branch);
   const content = Buffer.from(data?.content ?? "", "base64").toString();
-
-  const filePath = `./tmp/${path.replace(/\//g, "_")}.txt`;
-
-  if (!fs.existsSync("./tmp")) {
-    fs.mkdirSync("./tmp", { recursive: true });
-  }
-
-  fs.writeFileSync(filePath, content);
-  return filePath;
+  const lines = content.split("\n");
+  return { lines: lines.length, path };
 }
 
 export async function getOpenPullRequestsAssignedToMe(): Promise<PRDetails[]> {
@@ -150,10 +163,10 @@ export async function getOpenPullRequestsAssignedToMe(): Promise<PRDetails[]> {
   });
   return data
     .filter((pr) => {
-      // return pr.number === 7259; // hardcoded for testing
-      return pr.requested_reviewers?.find(
-        (r) => r.login === process.env.GITHUB_USERNAME,
-      );
+      return pr.number === 7287; // hardcoded for testing
+      // return pr.requested_reviewers?.find(
+      //   (r) => r.login === process.env.GITHUB_USERNAME,
+      // );
     })
     .map((pr) => ({
       owner,

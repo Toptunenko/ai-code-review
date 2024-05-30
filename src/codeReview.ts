@@ -1,43 +1,42 @@
-import { createOpenAIFile, createThread, runThread } from "./assistant";
+import {
+  addMessage,
+  calculateRunTokenCount,
+  createThread,
+  runPrompt,
+} from "./assistant";
 import { Beta } from "openai/resources";
 import {
   createComment,
-  downloadFile,
+  fileData,
   getDiff,
-  getFile,
   getOpenPullRequestsAssignedToMe,
   getPRDetails,
   getPullRequestComments,
   pushReviewComment,
 } from "./github";
-import { streamResult } from "./stream";
 import parseDiff, { File } from "parse-diff";
-import { createPrompt } from "./prompt";
+import { createFirstPrompt, createPrompts } from "./prompt";
 import { PRDetails } from "./types/github";
-import Thread = Beta.Thread;
 import { Review } from "./types/openAI";
+import Thread = Beta.Thread;
 
 async function reviewCodeWithChatGPT(
   file: File,
   thread: Thread,
   pull: PRDetails,
-  localFilePath: string,
+  lines: number,
 ): Promise<Review[]> {
   try {
-    const openAIFile = await createOpenAIFile(localFilePath);
-    let reviews: Review[] = [];
-    for (const chunk of file.chunks) {
-      const prompt = createPrompt(file, chunk, pull);
-      const stream = await runThread(thread.id, prompt, openAIFile.id);
+    const prompts = createPrompts(file, lines);
 
-      const chunkResult = await streamResult(stream);
-      const chunkReviews = JSON.parse(chunkResult);
-
-      if (chunkReviews.reviews.length > 0) {
-        reviews = [...reviews, ...chunkReviews.reviews];
-      }
+    let responseString = "";
+    for (const prompt of prompts) {
+      responseString = await runPrompt(thread.id, prompt);
     }
-    return reviews;
+
+    const reviews = JSON.parse(responseString);
+
+    return reviews?.reviews ?? [];
   } catch (error) {
     console.error("Error while reviewing code with ChatGPT:", error);
     return [];
@@ -61,48 +60,65 @@ export async function runCodeReview() {
     const parsedDiff = parseDiff(diff);
 
     const thread = await createThread();
+
+    await addMessage(thread.id, createFirstPrompt());
+
     for (const file of parsedDiff) {
-      const fileName = file.to as string;
-      //skip scss  and gotmpl files
-      if (fileName.endsWith(".scss") || fileName.endsWith(".gotmpl")) {
-        continue;
-      }
+      try {
+        const fileName = file.to as string;
 
-      // Skip files that already have comments
-      if (
-        existingComments.some(
-          (comment) =>
-            comment.path === fileName && comment.body.includes("AI review"),
-        )
-      ) {
-        console.log(`Skipping ${fileName} as it already has comments`);
-        continue;
-      }
+        // for testing. skip all files except file containing "e-commerce-product-wizard.facade.ts"
+        // if (
+        //   !fileName.includes(
+        //     "apps/gelato-api-ui/src/app/dashboard/dashboard/dashboard.component.html",
+        //   )
+        // ) {
+        //   continue;
+        // }
 
-      const localFilePath = await downloadFile(fileName, prDetails.headBranch);
-      console.log(`---------------------------------`);
-      console.log(`Review for ${fileName}`);
-      console.log(`---------------------------------`);
-      const reviews = await reviewCodeWithChatGPT(
-        file,
-        thread,
-        pull,
-        localFilePath,
-      );
-
-      const comments = createComment(file, reviews);
-
-      if (comments.length) {
-        // Push comments to GitHub
-        await pushReviewComment(pull.pullNumber, comments);
-
-        for (const review of reviews) {
-          console.log(review);
+        //skip scss  and gotmpl files
+        if (fileName.endsWith(".scss") || fileName.endsWith(".gotmpl")) {
+          continue;
         }
-      }
 
-      console.log(`---------------------------------`);
-      // console.log(`Review for ${file.filename}:\n${review}\n`);
+        // Skip files that already have comments
+        if (
+          existingComments.some(
+            (comment) =>
+              comment.path === fileName && comment.body.includes("AI review"),
+          )
+        ) {
+          console.log(`Skipping ${fileName} as it already has comments`);
+          continue;
+        }
+
+        const { lines } = await fileData(fileName, prDetails.headBranch);
+        console.log(`---------------------------------`);
+        console.log(`Review for ${fileName} (${lines} lines)`);
+        console.log(`---------------------------------`);
+        const reviews = await reviewCodeWithChatGPT(file, thread, pull, lines);
+
+        const comments = createComment(file, reviews);
+
+        const tokens = await calculateRunTokenCount(thread.id);
+
+        if (comments.length) {
+          // Push comments to GitHub
+          await pushReviewComment(pull.pullNumber, comments);
+
+          for (const review of reviews) {
+            console.log(review);
+          }
+        }
+        console.log(
+          `Tokens used: ${tokens.total_tokens} ($${tokens.total_price}) (Input: ${tokens.prompt_tokens}, Output: ${tokens.completion_tokens})`,
+        );
+
+        console.log(`---------------------------------`);
+        // console.log(`Review for ${file.filename}:\n${review}\n`);
+      } catch (error) {
+        console.error(`Error while reviewing ${file.to}:`, error);
+      }
     }
   }
 }
