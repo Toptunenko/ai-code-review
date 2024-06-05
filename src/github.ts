@@ -163,10 +163,10 @@ export async function getOpenPullRequestsAssignedToMe(): Promise<PRDetails[]> {
   });
   return data
     .filter((pr) => {
-      return pr.number === 7287; // hardcoded for testing
-      // return pr.requested_reviewers?.find(
-      //   (r) => r.login === process.env.GITHUB_USERNAME,
-      // );
+      // return pr.number === 7287; // hardcoded for testing
+      return pr.requested_reviewers?.find(
+        (r) => r.login === process.env.GITHUB_USERNAME,
+      );
     })
     .map((pr) => ({
       owner,
