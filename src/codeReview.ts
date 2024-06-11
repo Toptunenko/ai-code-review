@@ -21,6 +21,7 @@ import { Review } from "./types/openAI";
 import Thread = Beta.Thread;
 
 async function reviewCodeWithChatGPT(
+  repo: string,
   file: File,
   thread: Thread,
   pull: PRDetails,
@@ -43,9 +44,9 @@ async function reviewCodeWithChatGPT(
   }
 }
 
-export async function runCodeReview() {
+export async function runCodeReview(repo: string, pullRequestId: number) {
   console.log("Starting code review");
-  const pulls = await getOpenPullRequestsAssignedToMe();
+  const pulls = await getOpenPullRequestsAssignedToMe(repo, pullRequestId);
 
   if (!pulls.length) {
     console.log("No open pull requests assigned to you");
@@ -54,9 +55,12 @@ export async function runCodeReview() {
 
   for (const pull of pulls) {
     console.log(`Reviewing PR #${pull.pullNumber}`);
-    const prDetails = await getPRDetails(pull.pullNumber);
-    const diff = await getDiff(pull.pullNumber);
-    const existingComments = await getPullRequestComments(pull.pullNumber);
+    const prDetails = await getPRDetails(repo, pull.pullNumber);
+    const diff = await getDiff(repo, pull.pullNumber);
+    const existingComments = await getPullRequestComments(
+      repo,
+      pull.pullNumber,
+    );
     const parsedDiff = parseDiff(diff);
 
     const thread = await createThread();
@@ -76,8 +80,9 @@ export async function runCodeReview() {
         //   continue;
         // }
 
-        //skip scss  and gotmpl files
-        if (fileName.endsWith(".scss") || fileName.endsWith(".gotmpl")) {
+        const skipFiles = process.env.SKIP_FILES?.split(",") || [];
+        if (skipFiles.some((skipFile) => fileName.endsWith(skipFile))) {
+          console.log(`Skipping ${fileName} as it is in skip files`);
           continue;
         }
 
@@ -92,11 +97,21 @@ export async function runCodeReview() {
           continue;
         }
 
-        const { lines } = await fileData(fileName, prDetails.headBranch);
+        const { lines } = await fileData(
+          repo,
+          fileName,
+          prDetails.headBranch as string,
+        );
         console.log(`---------------------------------`);
         console.log(`Review for ${fileName} (${lines} lines)`);
         console.log(`---------------------------------`);
-        const reviews = await reviewCodeWithChatGPT(file, thread, pull, lines);
+        const reviews = await reviewCodeWithChatGPT(
+          repo,
+          file,
+          thread,
+          pull,
+          lines,
+        );
 
         const comments = createComment(file, reviews);
 
@@ -104,7 +119,7 @@ export async function runCodeReview() {
 
         if (comments.length) {
           // Push comments to GitHub
-          await pushReviewComment(pull.pullNumber, comments);
+          await pushReviewComment(repo, pull.pullNumber, comments);
 
           for (const review of reviews) {
             console.log(review);

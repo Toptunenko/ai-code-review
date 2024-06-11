@@ -4,12 +4,14 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "npx ts-node src/main.ts"
+    "start": "npx ts-node src/index.ts",
+    "build": "./zip.sh"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
     "@octokit/rest": "^20.1.0",
+    "aws-lambda": "^1.0.7",
     "axios": "^1.6.8",
     "dotenv": "^16.4.5",
     "openai": "^4.38.5",

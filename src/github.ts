@@ -1,12 +1,10 @@
 import { Octokit } from "@octokit/rest";
 import { Comment, PRDetails } from "./types/github";
-import * as fs from "fs";
-import { Chunk, File } from "parse-diff";
+import { File } from "parse-diff";
 import { Review } from "./types/openAI";
 
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 const owner = process.env.GITHUB_OWNER as string;
-const repo = process.env.GITHUB_REPO as string;
 
 export interface FileData {
   filename: string;
@@ -14,6 +12,7 @@ export interface FileData {
 }
 
 export async function getPullRequestFiles(
+  repo: string,
   pullNumber: number,
 ): Promise<FileData[]> {
   const { data } = await octokit.pulls.listFiles({
@@ -27,15 +26,18 @@ export async function getPullRequestFiles(
   }));
 }
 
-export async function getPRDetails(pullNumber: number): Promise<PRDetails> {
+export async function getPRDetails(
+  repo: string,
+  pullNumber: number,
+): Promise<PRDetails> {
   const prResponse = await octokit.pulls.get({
     owner: owner,
-    repo: repo,
+    repo,
     pull_number: pullNumber,
   });
   return {
     owner: owner,
-    repo: repo,
+    repo,
     pullNumber: pullNumber,
     title: prResponse.data.title ?? "",
     description: prResponse.data.body ?? "",
@@ -44,7 +46,10 @@ export async function getPRDetails(pullNumber: number): Promise<PRDetails> {
   };
 }
 
-export async function getDiff(pullNumber: number): Promise<string | null> {
+export async function getDiff(
+  repo: string,
+  pullNumber: number,
+): Promise<string | null> {
   const response = await octokit.pulls.get({
     owner,
     repo,
@@ -56,6 +61,7 @@ export async function getDiff(pullNumber: number): Promise<string | null> {
 }
 
 export async function getPullRequestCommentsL(
+  repo: string,
   pullNumber: number,
 ): Promise<Comment[]> {
   const { data } = await octokit.pulls.listReviewComments({
@@ -71,6 +77,7 @@ export async function getPullRequestCommentsL(
 }
 
 export async function getPullRequestComments(
+  repo: string,
   pullNumber: number,
 ): Promise<Comment[]> {
   let comments: Comment[] = [];
@@ -106,6 +113,7 @@ export async function getPullRequestComments(
 }
 
 export async function pushReviewComment(
+  repo: string,
   pullNumber: number,
   comments: Comment[],
 ): Promise<void> {
@@ -133,6 +141,7 @@ export function createComment(file: File, aiResponses: Review[]): Comment[] {
 }
 
 export async function getFile(
+  repo: string,
   path: string,
   branch: string = "staging",
 ): Promise<any> {
@@ -146,16 +155,20 @@ export async function getFile(
 }
 
 export async function fileData(
+  repo: string,
   path: string,
-  branch: string = "staging",
+  branch: string,
 ): Promise<Record<string, any>> {
-  const data = await getFile(path, branch);
+  const data = await getFile(repo, path, branch);
   const content = Buffer.from(data?.content ?? "", "base64").toString();
   const lines = content.split("\n");
   return { lines: lines.length, path };
 }
 
-export async function getOpenPullRequestsAssignedToMe(): Promise<PRDetails[]> {
+export async function getOpenPullRequestsAssignedToMe(
+  repo: string,
+  pullRequestId: number,
+): Promise<PRDetails[]> {
   const { data } = await octokit.pulls.list({
     owner,
     repo,
@@ -163,9 +176,10 @@ export async function getOpenPullRequestsAssignedToMe(): Promise<PRDetails[]> {
   });
   return data
     .filter((pr) => {
-      // return pr.number === 7287; // hardcoded for testing
       return pr.requested_reviewers?.find(
-        (r) => r.login === process.env.GITHUB_USERNAME,
+        (r) =>
+          r.login === process.env.GITHUB_USERNAME &&
+          pr.number === (pullRequestId || pr.number),
       );
     })
     .map((pr) => ({
