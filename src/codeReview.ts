@@ -10,27 +10,19 @@ import {
   pushReviewComment,
 } from "./github";
 import parseDiff, { File } from "parse-diff";
-import { createPrompts } from "./prompt";
-import { PRDetails } from "./types/github";
+import { createGitDiffPrompt } from "./prompt";
 import { Review } from "./types/openAI";
 import { ArgsMode } from "./types/args";
 import Thread = Beta.Thread;
 
 async function reviewCodeWithChatGPT(
-  repo: string,
   file: File,
   thread: Thread,
-  pull: PRDetails,
   lines: number,
 ): Promise<{ reviews: Review[]; generalComment: string }> {
   try {
-    const prompts = createPrompts(file, lines);
-
-    let responseString = "";
-    for (const prompt of prompts) {
-      responseString = await runPrompt(thread.id, prompt);
-    }
-
+    const prompt = createGitDiffPrompt(file.chunks, lines);
+    const responseString = await runPrompt(thread.id, prompt);
     const reviews = JSON.parse(responseString);
 
     return {
@@ -111,13 +103,7 @@ export async function runCodeReview(
         console.log(`---------------------------------`);
         console.log(`Review for ${fileName} (${lines} lines)`);
         console.log(`---------------------------------`);
-        const reviewRes = await reviewCodeWithChatGPT(
-          repo,
-          file,
-          thread,
-          pull,
-          lines,
-        );
+        const reviewRes = await reviewCodeWithChatGPT(file, thread, lines);
 
         const comments = createComment(file, reviewRes.reviews);
 
