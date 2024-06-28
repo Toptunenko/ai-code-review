@@ -93,15 +93,15 @@ export async function runCodeReview(
         }
 
         // Skip files that already have comments
-        // if (
-        //   existingComments.some(
-        //     (comment) =>
-        //       comment.path === fileName && comment.body.includes("AI review"),
-        //   )
-        // ) {
-        //   console.log(`Skipping ${fileName} as it already has comments`);
-        //   continue;
-        // }
+        if (
+          existingComments.some(
+            (comment) =>
+              comment.path === fileName && comment.body.includes("AI review"),
+          )
+        ) {
+          console.log(`Skipping ${fileName} as it already has comments`);
+          continue;
+        }
 
         const { lines } = await fileData(
           repo,
