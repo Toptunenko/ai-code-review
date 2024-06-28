@@ -11,6 +11,11 @@ export function createPrompts(file: File, lines: number): string[] {
 export function createFirstPrompt(): string {
   return `Your task is to review pull requests. Instructions:
 - Provide the response in following JSON format:  {"reviews": [{"lineNumber":  <line_number>, "reviewComment": "<review comment>"}]}
+Pre conditions:
+- Any file is always correctly imported and used. Don't comment it
+
+Instructions:
+- Provide the response in following JSON format:  {"reviews": [{"lineNumber":  <line_number>, "reviewComment": "<review comment>"}], "generalComment": "<general comment>"}
 - Do not give positive comments or compliments.
 - Provide comments and suggestions ONLY if there is something to improve, otherwise "reviews" should be an empty array.
 - Write the comment in GitHub Markdown format.
@@ -26,7 +31,8 @@ export function createFirstPrompt(): string {
     Imported components inside the 'imports' array are valid. Don't comment it.
 - if you see how to improve the code, provide a suggestion.
 -  IMPORTANT: Do not suggest adding type annotations to the variables with names that are ends with '$'. for example: 'value$'.
--  IMPORTANT: If the file has more than 500 lines, suggest splitting the file into multiple files. if the file has less than 500 lines, ignore this suggestion.
+-  IMPORTANT: Do not suggest adding type annotations to the parameters in the rxjs operators.
+-  IMPORTANT: If total lines in the file more than 500, suggest splitting the file into multiple files.
 `;
 }
 
@@ -43,10 +49,8 @@ export function createGitDiffPrompt(chunks: Chunk[], lines: number): string {
 
   diff = removeImportsFromDiff(diff);
 
-  return `Review the following code diff:
+  return `Review the following code diff. Consider all pre conditions and instructions:
   total lines in the file: ${lines}.
-  Consider the performance, readability of the code.
-  Take into account all rules and guidelines from the first message.
 \`\`\`diff
 ${diff}
 \`\`\``;

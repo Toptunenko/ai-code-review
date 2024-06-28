@@ -1,9 +1,4 @@
-import {
-  addMessage,
-  calculateRunTokenCount,
-  createThread,
-  runPrompt,
-} from "./assistant";
+import { calculateRunTokenCount, createThread, runPrompt } from "./assistant";
 import { Beta } from "openai/resources";
 import {
   createComment,
@@ -15,9 +10,10 @@ import {
   pushReviewComment,
 } from "./github";
 import parseDiff, { File } from "parse-diff";
-import { createFirstPrompt, createPrompts } from "./prompt";
+import { createPrompts } from "./prompt";
 import { PRDetails } from "./types/github";
 import { Review } from "./types/openAI";
+import { ArgsMode } from "./types/args";
 import Thread = Beta.Thread;
 
 async function reviewCodeWithChatGPT(
@@ -26,7 +22,7 @@ async function reviewCodeWithChatGPT(
   thread: Thread,
   pull: PRDetails,
   lines: number,
-): Promise<Review[]> {
+): Promise<{ reviews: Review[]; generalComment: string }> {
   try {
     const prompts = createPrompts(file, lines);
 
@@ -37,14 +33,24 @@ async function reviewCodeWithChatGPT(
 
     const reviews = JSON.parse(responseString);
 
-    return reviews?.reviews ?? [];
+    return {
+      reviews: reviews?.reviews ?? [],
+      generalComment: reviews.generalComment,
+    };
   } catch (error) {
     console.error("Error while reviewing code with ChatGPT:", error);
-    return [];
+    return {
+      reviews: [],
+      generalComment: "",
+    };
   }
 }
 
-export async function runCodeReview(repo: string, pullRequestId: number) {
+export async function runCodeReview(
+  repo: string,
+  pullRequestId: number,
+  mode: string,
+) {
   console.log("Starting code review");
   const pulls = await getOpenPullRequestsAssignedToMe(repo, pullRequestId);
 
@@ -65,7 +71,7 @@ export async function runCodeReview(repo: string, pullRequestId: number) {
 
     const thread = await createThread();
 
-    await addMessage(thread.id, createFirstPrompt());
+    // await addMessage(thread.id, createFirstPrompt());
 
     for (const file of parsedDiff) {
       try {
@@ -74,7 +80,7 @@ export async function runCodeReview(repo: string, pullRequestId: number) {
         // for testing. skip all files except file containing "e-commerce-product-wizard.facade.ts"
         // if (
         //   !fileName.includes(
-        //     "apps/gelato-api-ui/src/app/dashboard/dashboard/dashboard.component.html",
+        //     "apps/gelato-api-ui/src/app/e-commerce-product-wizard/services/e-commerce-product-wizard.facade.ts",
         //   )
         // ) {
         //   continue;
@@ -87,15 +93,15 @@ export async function runCodeReview(repo: string, pullRequestId: number) {
         }
 
         // Skip files that already have comments
-        if (
-          existingComments.some(
-            (comment) =>
-              comment.path === fileName && comment.body.includes("AI review"),
-          )
-        ) {
-          console.log(`Skipping ${fileName} as it already has comments`);
-          continue;
-        }
+        // if (
+        //   existingComments.some(
+        //     (comment) =>
+        //       comment.path === fileName && comment.body.includes("AI review"),
+        //   )
+        // ) {
+        //   console.log(`Skipping ${fileName} as it already has comments`);
+        //   continue;
+        // }
 
         const { lines } = await fileData(
           repo,
@@ -105,7 +111,7 @@ export async function runCodeReview(repo: string, pullRequestId: number) {
         console.log(`---------------------------------`);
         console.log(`Review for ${fileName} (${lines} lines)`);
         console.log(`---------------------------------`);
-        const reviews = await reviewCodeWithChatGPT(
+        const reviewRes = await reviewCodeWithChatGPT(
           repo,
           file,
           thread,
@@ -113,17 +119,21 @@ export async function runCodeReview(repo: string, pullRequestId: number) {
           lines,
         );
 
-        const comments = createComment(file, reviews);
+        const comments = createComment(file, reviewRes.reviews);
 
         const tokens = await calculateRunTokenCount(thread.id);
 
         if (comments.length) {
           // Push comments to GitHub
-          await pushReviewComment(repo, pull.pullNumber, comments);
+          if (mode === ArgsMode.write) {
+            await pushReviewComment(repo, pull.pullNumber, comments);
+          }
 
-          for (const review of reviews) {
+          for (const review of reviewRes.reviews) {
             console.log(review);
           }
+          console.log("General Comment: ");
+          console.log(reviewRes.generalComment);
         }
         console.log(
           `Tokens used: ${tokens.total_tokens} ($${tokens.total_price}) (Input: ${tokens.prompt_tokens}, Output: ${tokens.completion_tokens})`,

@@ -169,24 +169,36 @@ export async function getOpenPullRequestsAssignedToMe(
   repo: string,
   pullRequestId: number,
 ): Promise<PRDetails[]> {
-  const { data } = await octokit.pulls.list({
+  const { data } = await octokit.pulls.get({
     owner,
     repo,
-    state: "open",
+    pull_number: pullRequestId,
+    state: "all",
   });
-  return data
-    .filter((pr) => {
-      return pr.requested_reviewers?.find(
-        (r) =>
-          r.login === process.env.GITHUB_USERNAME &&
-          pr.number === (pullRequestId || pr.number),
-      );
-    })
-    .map((pr) => ({
+
+  return [
+    {
       owner,
       repo,
-      pullNumber: pr.number,
-      title: pr.title,
-      description: pr.body ?? "",
-    }));
+      pullNumber: pullRequestId,
+      title: data.title,
+      description: data.body ?? "",
+    },
+  ];
+
+  // return data
+  //   .filter((pr) => {
+  //     return pr.requested_reviewers?.find(
+  //       (r) =>
+  //         r.login === process.env.GITHUB_USERNAME &&
+  //         pr.number === (pullRequestId || pr.number),
+  //     );
+  //   })
+  //   .map((pr) => ({
+  //     owner,
+  //     repo,
+  //     pullNumber: pr.number,
+  //     title: pr.title,
+  //     description: pr.body ?? "",
+  //   }));
 }

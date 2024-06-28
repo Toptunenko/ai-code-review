@@ -6,6 +6,7 @@ import {
   APIGatewayProxyResult,
   APIGatewayProxyContext,
 } from "aws-lambda";
+import { ArgsMode } from "./types/args";
 
 const execPromise = util.promisify(exec);
 
@@ -36,7 +37,9 @@ export const handler: APIGatewayProxyHandler = async (
       );
 
       try {
-        await execPromise(`node index.js ${repoFullName} ${pullRequestId}`);
+        await execPromise(
+          `node index.js ${repoFullName} ${pullRequestId} ${ArgsMode.write}`,
+        );
         return {
           statusCode: 200,
           body: JSON.stringify({ message: "Success" }),
